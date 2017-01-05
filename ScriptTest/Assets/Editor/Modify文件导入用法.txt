@@ -1,0 +1,7 @@
+1.string[] m_uiPath是ui资源目录数组,比如string[] m_uiPath=new string["ac","bc"]，那么只要文件夹
+中包含了ac或者bc字符，在文件导入时就会被批处理成ui贴图的格式
+2.string[] m_texPath是3D贴图格式，道理同上
+
+3.执行时机，a:每有新的文件复制或者更新进来,比如从svn更新，或者外部复制到文件夹中
+	    b:点击文件夹,然后右键，Reimport即可重新导入
+	
