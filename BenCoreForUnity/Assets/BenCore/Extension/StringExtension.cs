@@ -13,7 +13,7 @@
 using System;
 
 namespace Ben {
-    public static class StringExtend {
+    public static class StringExtension {
         /// <summary>
         /// String 是否为null、empty、""
         /// </summary>

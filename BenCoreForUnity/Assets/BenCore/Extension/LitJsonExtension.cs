@@ -15,7 +15,7 @@ using LitJson;
 using System.Collections;
 
 namespace Ben {
-    public static class LitJsonExtend {
+    public static class LitJsonExtension {
         /// <summary>
         /// ContainKey
         /// </summary>

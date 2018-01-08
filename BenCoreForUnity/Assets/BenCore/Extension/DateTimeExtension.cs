@@ -12,7 +12,7 @@
 
 using System;
 namespace Ben {
-    public static class DateTimeExtend {
+    public static class DateTimeExtension {
         const String TIME_FORMAT_1 = "{0}:{1}:{2}";
         const String TIME_FORMAT_CN_1 = "{0}天{1}时{2}分{3}秒";
         static readonly DateTime START_TIME = new DateTime (1970, 1, 1, 8, 0, 0, DateTimeKind.Local);
