@@ -1,19 +1,25 @@
 ﻿using log4net;
 using log4net.Config;
 using System;
-using System.Collections.Concurrent;
+//using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Collections.Generic;
+using System.Collections;
 
-namespace Emrys.FlashLog
-{
-    public sealed class FlashLogger
-    {
+namespace Emrys.FlashLog {
+    public sealed class FlashLogger {
         /// <summary>
         /// 记录消息Queue
         /// </summary>
-        private readonly ConcurrentQueue<FlashLogMessage> _que;
+        //private readonly ConcurrentQueue<FlashLogMessage> _que;
+        private readonly Queue<FlashLogMessage> _que;
+
+        /// <summary>
+        /// Lock
+        /// </summary>
+        private static readonly object _lockEnqueue = new object(), _lockDequeue = new object();
 
         /// <summary>
         /// 信号
@@ -28,21 +34,19 @@ namespace Emrys.FlashLog
         /// <summary>
         /// 日志
         /// </summary>
-        private static FlashLogger _flashLog = new FlashLogger();
+        private static readonly FlashLogger _flashLog = new FlashLogger();
 
+        private FlashLogger() {
+            //var configFile = new FileInfo("../../log4net.config");
+            //if (!configFile.Exists) {
+            //    throw new Exception("未配置log4net配置文件！");
+            //}
 
-        private FlashLogger()
-        {
-            var configFile = new FileInfo("../../log4net.config");
-            if (!configFile.Exists)
-            {
-                throw new Exception("未配置log4net配置文件！");
-            }
+            //// 设置日志配置文件路径
+            //XmlConfigurator.Configure(configFile);
 
-            // 设置日志配置文件路径
-            XmlConfigurator.Configure(configFile);
-
-            _que = new ConcurrentQueue<FlashLogMessage>();
+            //_que = new ConcurrentQueue<FlashLogMessage>();
+            _que = new Queue<FlashLogMessage>();
             _mre = new ManualResetEvent(false);
             _log = LogManager.GetLogger(System.Reflection.MethodBase.GetCurrentMethod().DeclaringType);
         }
@@ -51,16 +55,29 @@ namespace Emrys.FlashLog
         /// 实现单例
         /// </summary>
         /// <returns></returns>
-        public static FlashLogger Instance()
-        {
+        public static FlashLogger Instance() {
             return _flashLog;
         }
 
         /// <summary>
         /// 另一个线程记录日志，只在程序初始化时调用一次
         /// </summary>
-        public void Register()
-        {
+        public void Register(string configPath, Hashtable propertyTable) {
+
+            if (propertyTable != null) {
+                foreach (string keyString in propertyTable.Keys) {
+                    GlobalContext.Properties[keyString] = propertyTable[keyString];
+                }
+            }
+
+            var configFile = new FileInfo(configPath);
+            if (!configFile.Exists) {
+                throw new Exception("未配置log4net配置文件！");
+            }
+
+            // 设置日志配置文件路径
+            XmlConfigurator.Configure(configFile);
+
             Thread t = new Thread(new ThreadStart(WriteLog));
             t.IsBackground = false;
             t.Start();
@@ -69,35 +86,37 @@ namespace Emrys.FlashLog
         /// <summary>
         /// 从队列中写日志至磁盘
         /// </summary>
-        private void WriteLog()
-        {
-            while (true)
-            {
+        private void WriteLog() {
+            while (true) {
                 // 等待信号通知
                 _mre.WaitOne();
 
                 FlashLogMessage msg;
                 // 判断是否有内容需要如磁盘 从列队中获取内容，并删除列队中的内容
-                while (_que.Count > 0 && _que.TryDequeue(out msg))
-                {
-                    // 判断日志等级，然后写日志
-                    switch (msg.Level)
-                    {
-                        case FlashLogLevel.Debug:
-                            _log.Debug(msg.Message, msg.Exception);
-                            break;
-                        case FlashLogLevel.Info:
-                            _log.Info(msg.Message, msg.Exception);
-                            break;
-                        case FlashLogLevel.Error:
-                            _log.Error(msg.Message, msg.Exception);
-                            break;
-                        case FlashLogLevel.Warn:
-                            _log.Warn(msg.Message, msg.Exception);
-                            break;
-                        case FlashLogLevel.Fatal:
-                            _log.Fatal(msg.Message, msg.Exception);
-                            break;
+                //while (_que.Count > 0 && _que.TryDequeue(out msg))
+                while (_que.Count > 0) {
+                    lock (_lockDequeue) {
+                        msg = _que.Dequeue();
+                        if (msg != null) {
+                            // 判断日志等级，然后写日志
+                            switch (msg.Level) {
+                                case FlashLogLevel.Debug:
+                                    _log.Debug(msg.Message, msg.Exception);
+                                    break;
+                                case FlashLogLevel.Info:
+                                    _log.Info(msg.Message, msg.Exception);
+                                    break;
+                                case FlashLogLevel.Error:
+                                    _log.Error(msg.Message, msg.Exception);
+                                    break;
+                                case FlashLogLevel.Warn:
+                                    _log.Warn(msg.Message, msg.Exception);
+                                    break;
+                                case FlashLogLevel.Fatal:
+                                    _log.Fatal(msg.Message, msg.Exception);
+                                    break;
+                            }
+                        }
                     }
                 }
 
@@ -114,56 +133,44 @@ namespace Emrys.FlashLog
         /// <param name="message">日志文本</param>
         /// <param name="level">等级</param>
         /// <param name="ex">Exception</param>
-        public void EnqueueMessage(string message, FlashLogLevel level, Exception ex = null)
-        {
+        public void EnqueueMessage(string message, FlashLogLevel level, Exception ex = null) {
             if ((level == FlashLogLevel.Debug && _log.IsDebugEnabled)
              || (level == FlashLogLevel.Error && _log.IsErrorEnabled)
              || (level == FlashLogLevel.Fatal && _log.IsFatalEnabled)
              || (level == FlashLogLevel.Info && _log.IsInfoEnabled)
-             || (level == FlashLogLevel.Warn && _log.IsWarnEnabled))
-            {
-                _que.Enqueue(new FlashLogMessage
-                {
-                    Message = message,
-                    Level = level,
-                    Exception = ex
-                });
+             || (level == FlashLogLevel.Warn && _log.IsWarnEnabled)) {
+                lock (_lockEnqueue) {
+                    _que.Enqueue(new FlashLogMessage {
+                        Message = message,
+                        Level = level,
+                        Exception = ex
+                    });
 
-                // 通知线程往磁盘中写日志
-                _mre.Set();
+                    // 通知线程往磁盘中写日志
+                    _mre.Set();
+                }
             }
         }
 
-        public static void Debug(string msg, Exception ex = null)
-        {
+        public static void Debug(string msg, Exception ex = null) {
             Instance().EnqueueMessage(msg, FlashLogLevel.Debug, ex);
         }
 
-        public static void Error(string msg, Exception ex = null)
-        {
+        public static void Error(string msg, Exception ex = null) {
             Instance().EnqueueMessage(msg, FlashLogLevel.Error, ex);
         }
 
-        public static void Fatal(string msg, Exception ex = null)
-        {
+        public static void Fatal(string msg, Exception ex = null) {
             Instance().EnqueueMessage(msg, FlashLogLevel.Fatal, ex);
         }
 
-        public static void Info(string msg, Exception ex = null)
-        {
+        public static void Info(string msg, Exception ex = null) {
             Instance().EnqueueMessage(msg, FlashLogLevel.Info, ex);
         }
 
-        public static void Warn(string msg, Exception ex = null)
-        {
+        public static void Warn(string msg, Exception ex = null) {
             Instance().EnqueueMessage(msg, FlashLogLevel.Warn, ex);
         }
 
     }
-
-
-
-
-
-
 }

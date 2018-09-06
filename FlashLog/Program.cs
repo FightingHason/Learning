@@ -10,7 +10,7 @@ namespace BenFastLog
         static void Main(string[] args)
         {
 
-            FlashLogger.Instance().Register();
+            FlashLogger.Instance().Register("../../log4net.config", null);
 
             FlashLogger.Debug("Debug");
             FlashLogger.Debug("Debug", new Exception("testexception"));
